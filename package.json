@@ -1,0 +1,28 @@
+{
+  "name": "practical-webgl-from-scratch-course",
+  "version": "1.0.0",
+  "description": "Examples for the Practical WebGL from scratch AWWWARDS video course",
+  "main": "index.js",
+  "scripts": {
+    "start": "http-server src"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gnikoloff/practical-webgl-from-scratch-course.git"
+  },
+  "keywords": [
+    "webgl",
+    "glsl",
+    "animation",
+    "shaders"
+  ],
+  "author": "Georgi Nikolov",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/gnikoloff/practical-webgl-from-scratch-course/issues"
+  },
+  "homepage": "https://github.com/gnikoloff/practical-webgl-from-scratch-course#readme",
+  "dependencies": {
+    "http-server": "^14.0.0"
+  }
+}
