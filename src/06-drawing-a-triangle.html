@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>04 - Adding more points on click</title>
+  <title>06 - Drawing a triangle</title>
 
   <style>
       
@@ -43,7 +43,7 @@
   <a id="go-back" href="/">Go Back</a>
 
   <div id="container">
-    <h1>04 - Adding more points on click</h1>
+    <h1>06 - Drawing a triangle</h1>
     <canvas id="canvas"></canvas>
   </div>
 
@@ -51,26 +51,19 @@
 
     const VERTEX_SHADER_SOURCE = `
       attribute vec4 position;
-      attribute vec4 color;
-
-      varying vec4 v_color;
       
       void main () {
         gl_Position = position;
 
         gl_PointSize = 20.0;
-
-        v_color = color;
       }
     `
 
     const FRAGMENT_SHADER_SOURCE = `
       precision highp float;
 
-      varying vec4 v_color;
-
       void main () {
-        gl_FragColor = v_color;
+        gl_FragColor = vec4(1.0);
       }
     `
 
@@ -92,30 +85,14 @@
     const program = createProgramOnDeviceGPU(vertexShader, fragmentShader) // WebGLProgram
 
     const positionInputVariableAddressOnGPU = gl.getAttribLocation(program, 'position') // 0
-    const colorInputVariableAddressOnGPU = gl.getAttribLocation(program, 'color') // 1
 
-    let vertices = new Float32Array([0, 0])
+    const vertices = new Float32Array([
+      -0.5, -0.5, // v0
+       0.5, -0.5, // v1
+       0.0,  0.5  // v2
+    ])
+
     const vertexBuffer = gl.createBuffer()
-
-    let colors = new Float32Array([0, 1, 0])
-    const colorBuffer = gl.createBuffer()
-
-    canvas.addEventListener('click', e => {
-      const globalCoordX = e.pageX
-      const globalCoordY = e.pageY
-      const canvasBoundingBox = canvas.getBoundingClientRect()
-      const localCanvasX = globalCoordX - canvasBoundingBox.left
-      const localCanvasY = globalCoordY - canvasBoundingBox.top
-      const webglCoordX = localCanvasX / canvasBoundingBox.width * 2 - 1
-      const webglCoordY = 2 - localCanvasY / canvasBoundingBox.height * 2 - 1
-      
-      vertices = new Float32Array([...vertices.subarray(), webglCoordX, webglCoordY])
-
-      const r = Math.random()
-      const g = Math.random()
-      const b = Math.random()
-      colors = new Float32Array([...colors.subarray(), r, g, b])
-    })
 
     // Render loop
 
@@ -124,14 +101,14 @@
       requestAnimationFrame(renderFrame)
 
       gl.viewport(0, 0, WIDTH, HEIGHT)
-      gl.clearColor(1, 1, 1, 1)
+      gl.clearColor(0.1, 0.1, 0.1, 1)
       gl.clear(gl.COLOR_BUFFER_BIT)
 
       // position attribute setup
       {
         // bind vertexBuffer as active gl.ARRAY_BUFFER
         gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer)
-        gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.DYNAMIC_DRAW)
+        gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW)
 
         // explicitly enable the input attribute position variable on the GPU
         gl.enableVertexAttribArray(positionInputVariableAddressOnGPU)
@@ -139,20 +116,10 @@
         // instruct the GPU how to unpack the vertex array we supplied into the input attribute position location
         gl.vertexAttribPointer(positionInputVariableAddressOnGPU, 2, gl.FLOAT, false, 0, 0)
       }
-
-      // color attribute setup
-      {
-        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer)
-        gl.bufferData(gl.ARRAY_BUFFER, colors, gl.DYNAMIC_DRAW)
-
-        gl.enableVertexAttribArray(colorInputVariableAddressOnGPU)
-        gl.vertexAttribPointer(colorInputVariableAddressOnGPU, 3, gl.FLOAT, false, 0, 0)
-      }
-
       // use the successfully linked WebGLProgram
       gl.useProgram(program)
 
-      gl.drawArrays(gl.POINTS, 0, vertices.length / 2)
+      gl.drawArrays(gl.TRIANGLES, 0, 3)
 
     }
 
