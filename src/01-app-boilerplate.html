@@ -49,9 +49,46 @@
 
   <script>
 
-    
+    // Init
+    const WIDTH = 512
+    const HEIGHT = 512
+
+    const canvas = document.getElementById('canvas')
+    canvas.width = WIDTH * devicePixelRatio
+    canvas.height = HEIGHT * devicePixelRatio
+
+    canvas.style.setProperty('width', `${WIDTH}px`)
+    canvas.style.setProperty('height', `${HEIGHT}px`)
+
+    const gl = canvas.getContext('webgl')
+
+    // Render loop
+
+    requestAnimationFrame(renderFrame)
+    function renderFrame () {
+      requestAnimationFrame(renderFrame)
+
+      gl.enable(gl.SCISSOR_TEST)
+
+      gl.viewport(0, 0, WIDTH, HEIGHT)
+      gl.scissor(0, 0, WIDTH / 2, HEIGHT)
+      gl.clearColor(1, 0, 0, 1)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+
+      gl.scissor(WIDTH / 2, 0, WIDTH / 2, HEIGHT)
+      gl.clearColor(0, 1, 0, 1)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+    }
 
   </script>
+
+
+
+
+
+
+
+
 
   <!-- Global site tag (gtag.js) - Google Analytics -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=UA-204513506-4"></script>
