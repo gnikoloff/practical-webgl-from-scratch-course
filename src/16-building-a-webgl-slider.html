@@ -48,6 +48,7 @@
       position: absolute;
       top: 50%;
       margin-top: -21px;
+      cursor: pointer;
     }
 
     .slider-button:after {
@@ -96,8 +97,8 @@
     </div>
   </div>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/popmotion/11.0.0/popmotion.min.js" integrity="sha512-huULEH7efthIJ2+vm+LoLYvy5/gRJkrA2g/G2xhBIrYiYyc1qq6P+r95Szmhbvi59jyhATyZstzAgXm4BQ72HA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script>
-
 
     const VERTEX_SHADER_SOURCE = `
       attribute vec4 position;
@@ -115,12 +116,43 @@
     const FRAGMENT_SHADER_SOURCE = `
       precision highp float;
 
-      uniform sampler2D textures[7];
+      const int NUMBER_OF_TEXTURES = 7;
+
+      uniform sampler2D textures[NUMBER_OF_TEXTURES];
+      uniform int nextSlideIdx;
+      uniform int activeSlideIdx;
+      uniform float slideMixFactor;
 
       varying vec2 v_uv;
+      
+      vec4 sampleFromTextureAtIndex (sampler2D textures[7], int textureIndex, vec2 uv) {
+        vec4 outputColor = vec4(0.0);
+        for (int i = 0; i < NUMBER_OF_TEXTURES; i++) {
+          vec4 textureColorAtIndex = texture2D(textures[i], uv);
+          if (i == textureIndex) {
+            outputColor = textureColorAtIndex;
+          }
+        }
+        return outputColor;
+      }
+
+      float rand(vec2 co) {
+        return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
+      }
 
       void main () {
-        gl_FragColor = vec4(0.1, 0.1, 0.1, 1.0);
+        vec2 center = vec2(0.5);
+        float threshold = 3.0;
+        float fadeEdge = 0.1;
+
+        float dist = distance(center, v_uv) / threshold;
+        float r = slideMixFactor - min(rand(vec2(v_uv.y, 0.0)), rand(vec2(0.0, v_uv.x)));
+
+        vec4 activeTextureColor = sampleFromTextureAtIndex(textures, activeSlideIdx, v_uv);
+        vec4 nextTextureColor = sampleFromTextureAtIndex(textures, nextSlideIdx, v_uv);
+      
+        float augmentedSlideFactor = mix(0.0, mix(step(dist, r), 1.0, smoothstep(1.0-fadeEdge, 1.0, slideMixFactor)), smoothstep(0.0, fadeEdge, slideMixFactor));
+        gl_FragColor = mix(activeTextureColor, nextTextureColor, augmentedSlideFactor);
       }
     `
 
@@ -135,6 +167,11 @@
       'slide-6-512x512.jpeg',
       'slide-7-512x512.jpeg',
     ]
+
+    let activeSlideIdx = 0
+    let nextSlideIdx = 0
+    let slideMixFactor = 0
+    let slideTransitionPlayback
     
     const canvas = document.getElementById('canvas')
     canvas.width = CANVAS_WIDTH * devicePixelRatio
@@ -184,14 +221,25 @@
     // Create a special WebGLBuffer that will hold the indices describing our 2 triangles
     const indexBuffer = gl.createBuffer()
 
+    // Attributes locations on GPU
     // Look up "position" attribute variable location on our GPU
     const positionAttributeLocationOnGPU = gl.getAttribLocation(drawingProgram, 'position') // 0
 
     // Look up "uv" attribute variable location on our GPU
     const uvAttributeLocationOnGPU = gl.getAttribLocation(drawingProgram, 'uv') // 1
 
+    // Uniform locations on GPU
     // Look up "textures" uniform variable location on our GPU
     const texturesUniformLocationOnGPU = gl.getUniformLocation(drawingProgram, 'textures')
+
+    // Look up "nextSlideIdx" uniform variable location on our GPU
+    const nextSlideIdxUniformLocationOnGPU = gl.getUniformLocation(drawingProgram, 'nextSlideIdx')
+
+    // Look up "activeSlideIdx" uniform variable location on our GPU
+    const activeSlideIdxUniformLocationOnGPU = gl.getUniformLocation(drawingProgram, 'activeSlideIdx')
+
+    // Look up "slideMixFactor" uniform variable location on our GPU
+    const slideMixFactorUniformLocationOnGPU = gl.getUniformLocation(drawingProgram, 'slideMixFactor')
 
     // Create an array to hold our WebGLTextures for our slides
     let textures
@@ -200,10 +248,64 @@
       .all(SLIDER_IMAGE_URLS.map(imageToBeLoadedName => loadImage(`/assets/webgl-slider/${imageToBeLoadedName}`)))
       .then(loadedImages => {
         textures = loadedImages.map(createWebGLTexture) 
-        console.log(textures)
       })
       .catch(err => console.error(err))
 
+    const prevButton = document.getElementById('prev-button')
+    const nextButton = document.getElementById('next-button')
+    
+    prevButton.addEventListener('click', onButtonSlideClick)
+    nextButton.addEventListener('click', onButtonSlideClick)
+
+    function onButtonSlideClick (e) {
+      const clickedButtonID = e.target.getAttribute('id')
+
+      if (slideTransitionPlayback) {
+        slideTransitionPlayback.stop()
+      }
+
+      if (clickedButtonID === 'prev-button') {
+        nextSlideIdx--
+        if (nextSlideIdx === -1) {
+          nextSlideIdx = SLIDER_IMAGE_URLS.length - 1
+        }
+        slideTransitionPlayback = popmotion.animate({
+          duration: 800,
+          ease: popmotion.easeInOut,
+          onUpdate: v => {
+            slideMixFactor = v
+          },
+          onComplete: () => {
+            activeSlideIdx--
+            if (activeSlideIdx === -1) {
+              activeSlideIdx = SLIDER_IMAGE_URLS.length - 1
+            }
+            slideMixFactor = 0
+          }
+        })
+      } else if (clickedButtonID === 'next-button') {
+        nextSlideIdx++
+        if (nextSlideIdx === SLIDER_IMAGE_URLS.length) {
+          nextSlideIdx = 0
+        }
+
+        slideTransitionPlayback = popmotion.animate({
+          duration: 800,
+          ease: popmotion.easeInOut,
+          onUpdate: v => {
+            slideMixFactor = v
+          },
+          onComplete: () => {
+            activeSlideIdx = nextSlideIdx
+            slideMixFactor = 0
+          }
+        })
+        // activeSlideIdx++
+        // if (activeSlideIdx > 6) {
+        //   activeSlideIdx = 0
+        // }
+      }
+    }
     
     function createWebGLTexture (image) {
       // Create a new WebGLTexture
@@ -212,7 +314,7 @@
       // Bind our texture to the global WebGL gl.TEXTURE_2D binding point
       gl.bindTexture(gl.TEXTURE_2D, texture)
 
-
+      // Flip the texture coordinates vertically
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true)
 
       // Set the x wrapping mode for our active gl.TEXTURE_2D (texture)
@@ -286,17 +388,28 @@
       gl.useProgram(drawingProgram)
 
       if (textures) {
+        // Bind our textures to correct texture slots on GPU
         textures.forEach((texture, i) => {
-          // Active texture unit at index 0
+          // Active texture unit at appropriate index
           gl.activeTexture(gl.TEXTURE0 + i)
           // Bind "texture" to active gl.TEXTURE_2D
           gl.bindTexture(gl.TEXTURE_2D, texture)
         })
-        gl.uniform1iv(texturesUniformLocationOnGPU, textures.map((_, i) => i))
-      }
+        // Pass appropriate texture slot indices so our shaders know where to look at
+        gl.uniform1iv(texturesUniformLocationOnGPU, [0, 1, 2, 3, 4, 5, 6])
 
-      // Issue a draw command using my active WebGLProgram
-      gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0)
+        // Pass in correct active slide index
+        gl.uniform1i(activeSlideIdxUniformLocationOnGPU, activeSlideIdx)
+
+        // Pass in correct next slide index
+        gl.uniform1i(nextSlideIdxUniformLocationOnGPU, nextSlideIdx)
+
+        // Pass in correct slider mix factor between prev and active slide
+        gl.uniform1f(slideMixFactorUniformLocationOnGPU, slideMixFactor)
+
+        // Issue a draw command using my active WebGLProgram
+        gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0)
+      }
 
     }
 
