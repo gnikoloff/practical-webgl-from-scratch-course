@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>16 - Building a WebGL Slider</title>
+
+  <style>
+      
+    * { margin: 0; padding: 0; }
+
+    body {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: sans-serif;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 1.5em;
+      margin-bottom: 1em;
+    }
+
+    #go-back {
+      position: fixed;
+      top: 1em;
+      left: 1em;
+    }
+
+    #canvas {
+      box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.2);
+    }
+
+    #slider-wrapper {
+      position: relative;
+    }
+
+    .slider-button {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: 4px solid black;
+      background: none;
+      position: absolute;
+      top: 50%;
+      margin-top: -21px;
+    }
+
+    .slider-button:after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 0;
+      height: 0;
+      margin-top: -8px;
+      border-top: 8px solid transparent;
+      border-bottom: 8px solid transparent;
+    }
+
+    #prev-button {
+      left: 1rem;
+    }
+
+    #prev-button:after {
+      margin-left: -7px;
+      border-right: 11px solid black;
+    }
+
+    #next-button {
+      right: 1rem;
+    }
+
+    #next-button:after {
+      margin-left: -4px;
+      border-left: 11px solid black;
+    }
+
+  </style>
+
+</head>
+<body>
+
+  <a id="go-back" href="/">Go Back</a>
+
+  <div id="container">
+    <h1>16 - Building a WebGL Slider</h1>
+    <div id="slider-wrapper">
+      <canvas id="canvas"></canvas>
+      <button class="slider-button" id="prev-button"></button>
+      <button class="slider-button" id="next-button"></button>
+    </div>
+  </div>
+
+  <script>
+
+
+    const VERTEX_SHADER_SOURCE = `
+      attribute vec4 position;
+      attribute vec2 uv;
+
+      varying vec2 v_uv;
+
+      void main () {
+        gl_Position = position;
+
+        v_uv = uv;
+      }
+    `
+
+    const FRAGMENT_SHADER_SOURCE = `
+      precision highp float;
+
+      uniform sampler2D textures[7];
+
+      varying vec2 v_uv;
+
+      void main () {
+        gl_FragColor = vec4(0.1, 0.1, 0.1, 1.0);
+      }
+    `
+
+    const CANVAS_WIDTH = 512
+    const CANVAS_HEIGHT = 512
+    const SLIDER_IMAGE_URLS = [
+      'slide-1-512x512.jpeg',
+      'slide-2-512x512.jpeg',
+      'slide-3-512x512.jpeg',
+      'slide-4-512x512.jpeg',
+      'slide-5-512x512.jpeg',
+      'slide-6-512x512.jpeg',
+      'slide-7-512x512.jpeg',
+    ]
+    
+    const canvas = document.getElementById('canvas')
+    canvas.width = CANVAS_WIDTH * devicePixelRatio
+    canvas.height = CANVAS_HEIGHT * devicePixelRatio
+    canvas.style.setProperty('width', `${CANVAS_WIDTH}px`)
+    canvas.style.setProperty('height', `${CANVAS_HEIGHT}px`)
+
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+
+    // Create and compile vertex & fragment shaders on GPU
+    const vertexShader = createShader(gl.VERTEX_SHADER, VERTEX_SHADER_SOURCE)
+    const fragmentShader = createShader(gl.FRAGMENT_SHADER, FRAGMENT_SHADER_SOURCE)
+
+    // Create a WebGLProgram and link the vertex & fragment shaders to it on the GPU
+    const drawingProgram = createProgram(vertexShader, fragmentShader)
+
+    // Create an array holding the positions of our points to be rendered
+    const QUAD_WIDTH = 2
+    const QUAD_HEIGHT = 2
+    const positions = new Float32Array([
+      -QUAD_WIDTH / 2, -QUAD_HEIGHT / 2, // v0
+       QUAD_WIDTH / 2, -QUAD_HEIGHT / 2, // v1
+       QUAD_WIDTH / 2, QUAD_HEIGHT / 2, // v2
+      -QUAD_WIDTH / 2, QUAD_HEIGHT / 2, // v3
+    ])
+
+    // Create a WebGLBuffer that will hold our positions to be supplied to the GPU (vertex shader)
+    const vertexBuffer = gl.createBuffer()
+
+    // Create a WebGLBuffer that will hold our UVs to be supplied to the GPU
+    const uvBuffer = gl.createBuffer()
+
+    // Create a array that holds our UVs as floats with 32 bit precision
+    const uvs = new Float32Array([
+      0, 0, // v0
+      1, 0, // v1
+      1, 1, // v2
+      0, 1, // v3
+    ])
+
+    // Create an array holding the indices that describe our vertex connectiviy
+    const indices = new Uint16Array([
+      1, 2, 0, // first triangle
+      0, 2, 3, // second triangle
+    ])
+
+    // Create a special WebGLBuffer that will hold the indices describing our 2 triangles
+    const indexBuffer = gl.createBuffer()
+
+    // Look up "position" attribute variable location on our GPU
+    const positionAttributeLocationOnGPU = gl.getAttribLocation(drawingProgram, 'position') // 0
+
+    // Look up "uv" attribute variable location on our GPU
+    const uvAttributeLocationOnGPU = gl.getAttribLocation(drawingProgram, 'uv') // 1
+
+    // Look up "textures" uniform variable location on our GPU
+    const texturesUniformLocationOnGPU = gl.getUniformLocation(drawingProgram, 'textures')
+
+    // Create an array to hold our WebGLTextures for our slides
+    let textures
+
+    Promise
+      .all(SLIDER_IMAGE_URLS.map(imageToBeLoadedName => loadImage(`/assets/webgl-slider/${imageToBeLoadedName}`)))
+      .then(loadedImages => {
+        textures = loadedImages.map(createWebGLTexture) 
+        console.log(textures)
+      })
+      .catch(err => console.error(err))
+
+    
+    function createWebGLTexture (image) {
+      // Create a new WebGLTexture
+      const texture = gl.createTexture()
+
+      // Bind our texture to the global WebGL gl.TEXTURE_2D binding point
+      gl.bindTexture(gl.TEXTURE_2D, texture)
+
+
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true)
+
+      // Set the x wrapping mode for our active gl.TEXTURE_2D (texture)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+      // Set the y wrapping mode for our active gl.TEXTURE_2D (texture)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+      // Set the min filter for our active gl.TEXTURE_2D
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
+      // Set the mag filter for our active gl.TEXTURE_2D
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+
+      // Supply the image to the newly created gl.TEXTURE_2D (texture)
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, image)
+
+      // Generate mipmap levels for our texture
+      gl.generateMipmap(gl.TEXTURE_2D)
+
+      gl.bindTexture(gl.TEXTURE_2D, null)
+
+      return texture
+    }
+
+    // Rendering loop
+    requestAnimationFrame(renderFrame)
+    function renderFrame () {
+      requestAnimationFrame(renderFrame)
+
+      gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight)
+      gl.clearColor(0.1, 0.1, 0.1, 1)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+
+      // Binds the WebGLBuffer that holds our vertices positions
+      {
+        // Bind WebGLBuffer (vertexBuffer) to special WebGL bind point (gl.ARRAY_BUFFER)
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer)
+
+        // Supply positions float 32 bit array to WebGLBuffer (vertexBuffer)
+        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW)
+
+        // Explicitly enable "position" variable on GPU
+        gl.enableVertexAttribArray(positionAttributeLocationOnGPU)
+
+        // Instruct the GPU how to unpack our WebGLBuffer to our input attribute variable "position" in the vertex shader
+        gl.vertexAttribPointer(positionAttributeLocationOnGPU, 2, gl.FLOAT, false, 0, 0)
+      }
+
+      // Binds the WebGLBuffer that holds our vertices UVs
+      {
+        // Bind WebGLBuffer (uvBuffer) to special WebGL bind point (gl.ARRAY_BUFFER)
+        gl.bindBuffer(gl.ARRAY_BUFFER, uvBuffer)
+
+        // Supply UVs float 32 bit array to WebGLBuffer (gl.ARRAY_BUFFER)
+        gl.bufferData(gl.ARRAY_BUFFER, uvs, gl.STATIC_DRAW)
+
+        // Explicitly enable "uv" variable on GPU
+        gl.enableVertexAttribArray(uvAttributeLocationOnGPU)
+
+        // Instruct the GPU how to unpack our WebGLBuffer to our input attribute variable "uv" in the vertex shader
+        gl.vertexAttribPointer(uvAttributeLocationOnGPU, 2, gl.FLOAT, false, 0, 0)
+      }
+
+      // Binds the WebGLBuffer that holds our vertices indices
+      {
+        // Bind WebGLBuffer (indexBuffer) to special WebGL bind point (gl.ELEMENT_ARRAY_BUFFER)
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer)
+        // Supply indices as unsigned integers with 16 bit precision
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW)
+      }
+
+      // Explicitly use my WebGLProgram that I am interested in drawing with
+      gl.useProgram(drawingProgram)
+
+      if (textures) {
+        textures.forEach((texture, i) => {
+          // Active texture unit at index 0
+          gl.activeTexture(gl.TEXTURE0 + i)
+          // Bind "texture" to active gl.TEXTURE_2D
+          gl.bindTexture(gl.TEXTURE_2D, texture)
+        })
+        gl.uniform1iv(texturesUniformLocationOnGPU, textures.map((_, i) => i))
+      }
+
+      // Issue a draw command using my active WebGLProgram
+      gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0)
+
+    }
+
+    // Helpers
+    function loadImage (url) {
+      return new Promise((resolve, reject) => {
+        const image = new Image()
+        image.onload = () => resolve(image)
+        image.onerror = err => reject(err)
+        image.src = url
+      })
+    }
+
+    // WebGL helper methods
+    function createShader (type, source) { // WebGLShader
+      const shader = gl.createShader(type)
+      gl.shaderSource(shader, source)
+      gl.compileShader(shader)
+      if (gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        return shader
+      }
+      console.error(`
+        Error when compiling shader on the GPU:
+        ${gl.getShaderInfoLog(shader)}
+      `)
+      gl.deleteShader(shader)
+    }
+
+    function createProgram (vertexShaderObject, fragmentShaderObject) { // WebGLProgram
+      const program = gl.createProgram()
+      gl.attachShader(program, vertexShaderObject)
+      gl.attachShader(program, fragmentShaderObject)
+      gl.linkProgram(program)
+      if (gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        return program
+      }
+      console.error(`
+        Error when linking program on the GPU:
+        ${gl.getProgramInfoLog(program)}
+      `)
+      gl.deleteProgram(program)
+    }
+
+  </script>
+
+
+
+
+
+
+
+
+
+  <!-- Global site tag (gtag.js) - Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=UA-204513506-4"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'UA-204513506-4');
+  </script>
+
+  
+</body>
+</html>
