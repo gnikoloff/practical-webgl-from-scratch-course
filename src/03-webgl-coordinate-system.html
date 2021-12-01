@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>03 - The WebGL coordinate system</title>
+
+  <style>
+      
+    * { margin: 0; padding: 0; }
+
+    body {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: sans-serif;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 1.5em;
+      margin-bottom: 1em;
+    }
+
+    #go-back {
+      position: fixed;
+      top: 1em;
+      left: 1em;
+    }
+
+    #canvas {
+      box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.2);
+    }
+
+  </style>
+
+</head>
+<body>
+
+  <a id="go-back" href="/">Go Back</a>
+
+  <div id="container">
+    <h1>03 - The WebGL coordinate system</h1>
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <script>
+
+    const VERTEX_SHADER_SOURCE = `
+      attribute vec4 position;
+
+      void main () {
+        gl_Position = position;
+        gl_PointSize = 20.0;
+      }
+    `
+
+    const FRAGMENT_SHADER_SOURCE = `
+      void main () {
+        gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
+      }
+    `
+
+    const CANVAS_WIDTH = 512
+    const CANVAS_HEIGHT = 512
+    
+    const canvas = document.getElementById('canvas')
+    canvas.width = CANVAS_WIDTH * devicePixelRatio
+    canvas.height = CANVAS_HEIGHT * devicePixelRatio
+    canvas.style.setProperty('width', `${CANVAS_WIDTH}px`)
+    canvas.style.setProperty('height', `${CANVAS_HEIGHT}px`)
+
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+
+    // Create and compile vertex & fragment shaders on GPU
+    const vertexShader = createShader(gl.VERTEX_SHADER, VERTEX_SHADER_SOURCE)
+    const fragmentShader = createShader(gl.FRAGMENT_SHADER, FRAGMENT_SHADER_SOURCE)
+
+    // Create a WebGLProgram and link the vertex & fragment shaders to it on the GPU
+    const drawingProgram = createProgram(vertexShader, fragmentShader)
+
+    // Create a array holding the positions of our point to be rendered
+    const positions = new Float32Array([
+      Math.random() * 2 - 1,
+      Math.random() * 2 - 1
+    ])
+
+    // Create a WebGLBuffer that will hold our positions to be supplied to the GPU (vertex shader)
+    const vertexBuffer = gl.createBuffer()
+
+    // Look up "position" attribute variable location on our GPU
+    const positionAttributeLocationOnGPU = gl.getAttribLocation(drawingProgram, 'position') // 0
+
+    // Rendering loop
+    requestAnimationFrame(renderFrame)
+    function renderFrame () {
+      requestAnimationFrame(renderFrame)
+
+      gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight)
+      gl.clearColor(0.1, 0.1, 0.1, 1)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+
+      // Bind WebGLBuffer (vertexBuffer) to special WebGL bind point (gl.ARRAY_BUFFER)
+      gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer)
+
+      // Supply positions float 32 bit array to WebGLBuffer (vertexBuffer)
+      gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW)
+
+      // Explicitly enable this variable on GPU
+      gl.enableVertexAttribArray(positionAttributeLocationOnGPU)
+
+      // Instruct the GPU how to unpack our WebGLBuffer to our input attribute variable "position" in the vertex shader
+      gl.vertexAttribPointer(positionAttributeLocationOnGPU, 2, gl.FLOAT, false, 0, 0)
+
+      // Explicitly use my WebGLProgram that I am interested in drawing with
+      gl.useProgram(drawingProgram)
+
+      // Issue a draw command using my active WebGLProgram
+      gl.drawArrays(gl.POINTS, 0, 1)
+
+    }
+
+    // WebGL helper methods
+    function createShader (type, source) { // WebGLShader
+      const shader = gl.createShader(type)
+      gl.shaderSource(shader, source)
+      gl.compileShader(shader)
+      if (gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        return shader
+      }
+      console.error(`
+        Error when compiling shader on the GPU:
+        ${gl.getShaderInfoLog(shader)}
+      `)
+      gl.deleteShader(shader)
+    }
+
+    function createProgram (vertexShaderObject, fragmentShaderObject) { // WebGLProgram
+      const program = gl.createProgram()
+      gl.attachShader(program, vertexShaderObject)
+      gl.attachShader(program, fragmentShaderObject)
+      gl.linkProgram(program)
+      if (gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        return program
+      }
+      console.error(`
+        Error when linking program on the GPU:
+        ${gl.getProgramInfoLog(program)}
+      `)
+      gl.deleteProgram(program)
+    }
+
+  </script>
+
+
+
+
+
+
+
+
+
+  <!-- Global site tag (gtag.js) - Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=UA-204513506-4"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'UA-204513506-4');
+  </script>
+
+  
+</body>
+</html>

@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>04 - Adding points on mouse click</title>
+
+  <style>
+      
+    * { margin: 0; padding: 0; }
+
+    body {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: sans-serif;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 1.5em;
+      margin-bottom: 1em;
+    }
+
+    #go-back {
+      position: fixed;
+      top: 1em;
+      left: 1em;
+    }
+
+    #canvas {
+      box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.2);
+    }
+
+  </style>
+
+</head>
+<body>
+
+  <a id="go-back" href="/">Go Back</a>
+
+  <div id="container">
+    <h1>04 - Adding points on mouse click</h1>
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <script>
+
+
+    const VERTEX_SHADER_SOURCE = `
+      attribute vec4 position;
+      attribute vec4 color;
+      attribute float pointSize;
+
+      varying vec4 v_color;
+
+      void main () {
+        gl_Position = position;
+        gl_PointSize = pointSize;
+
+        v_color = color;
+      }
+    `
+
+    const FRAGMENT_SHADER_SOURCE = `
+      precision highp float;
+
+      varying vec4 v_color;
+
+      void main () {
+        gl_FragColor = v_color;
+      }
+    `
+
+    const CANVAS_WIDTH = 512
+    const CANVAS_HEIGHT = 512
+    
+    const canvas = document.getElementById('canvas')
+    canvas.width = CANVAS_WIDTH * devicePixelRatio
+    canvas.height = CANVAS_HEIGHT * devicePixelRatio
+    canvas.style.setProperty('width', `${CANVAS_WIDTH}px`)
+    canvas.style.setProperty('height', `${CANVAS_HEIGHT}px`)
+
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+
+    // Create and compile vertex & fragment shaders on GPU
+    const vertexShader = createShader(gl.VERTEX_SHADER, VERTEX_SHADER_SOURCE)
+    const fragmentShader = createShader(gl.FRAGMENT_SHADER, FRAGMENT_SHADER_SOURCE)
+
+    // Create a WebGLProgram and link the vertex & fragment shaders to it on the GPU
+    const drawingProgram = createProgram(vertexShader, fragmentShader)
+
+    // Create an array holding the positions of our points to be rendered
+    let positions = new Float32Array([
+      Math.random() * 2 - 1,
+      Math.random() * 2 - 1
+    ])
+
+    // Create a WebGLBuffer that will hold our positions to be supplied to the GPU (vertex shader)
+    const vertexBuffer = gl.createBuffer()
+
+    // Create an array holding the colors of our points to be rendered
+    let colors = new Float32Array([
+      1.0, 0.0, 0.0
+    ])
+
+    // Create a WebGLBuffer that will hold our colors to be supplied to the GPU
+    const colorBuffer = gl.createBuffer()
+
+    // Create an array holding the sizes of our point to be rendered
+    let pointSizes = new Float32Array([Math.random() * 15 + 5])
+
+    // Create a WebGLBuffer that will hold our point sizes to be supplied to the GPU
+    const sizeBuffer = gl.createBuffer()
+
+    // Look up "position" attribute variable location on our GPU
+    const positionAttributeLocationOnGPU = gl.getAttribLocation(drawingProgram, 'position') // 0
+
+    // Look up "color" attribute variable location on our GPU
+    const colorAttributeLocationOnGPU = gl.getAttribLocation(drawingProgram, 'color') // 1
+
+    // Look up "pointSize" attribute variable location on our GPU
+    const pointSizeAttributeLocationOnGPU = gl.getAttribLocation(drawingProgram, 'pointSize') // 2
+
+    // Add user interaction on mouse click
+    canvas.addEventListener('click', onMouseClick)
+
+    function onMouseClick (event) {
+      const globalPageCoordX = event.pageX
+      const globalPageCoordY = event.pageY
+      const canvasBoundingBox = canvas.getBoundingClientRect()
+      const localCanvasCoordX = globalPageCoordX - canvasBoundingBox.left
+      const localCanvasCoordY = globalPageCoordY - canvasBoundingBox.top
+      const webglNormalisedCoordX = localCanvasCoordX / canvasBoundingBox.width * 2 - 1
+      const webglNormalisedCoordY = 2 - localCanvasCoordY / canvasBoundingBox.height * 2 - 1
+      positions = new Float32Array([
+        ...positions,
+        webglNormalisedCoordX,
+        webglNormalisedCoordY
+      ])
+
+      const randR = Math.random()
+      const randG = Math.random()
+      const randB = Math.random()
+      colors = new Float32Array([
+        ...colors,
+        randR,
+        randG,
+        randB
+      ])
+
+      const randPointSize = Math.random() * 15 + 5
+      pointSizes = new Float32Array([
+        ...pointSizes,
+        randPointSize
+      ])
+    }
+
+    // Rendering loop
+    requestAnimationFrame(renderFrame)
+    function renderFrame () {
+      requestAnimationFrame(renderFrame)
+
+      gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight)
+      gl.clearColor(0.1, 0.1, 0.1, 1)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+
+      {
+        // Bind WebGLBuffer (vertexBuffer) to special WebGL bind point (gl.ARRAY_BUFFER)
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer)
+
+        // Supply positions float 32 bit array to WebGLBuffer (vertexBuffer)
+        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.DYNAMIC_DRAW)
+
+        // Explicitly enable "position" variable on GPU
+        gl.enableVertexAttribArray(positionAttributeLocationOnGPU)
+
+        // Instruct the GPU how to unpack our WebGLBuffer to our input attribute variable "position" in the vertex shader
+        gl.vertexAttribPointer(positionAttributeLocationOnGPU, 2, gl.FLOAT, false, 0, 0)
+      }
+
+      {
+        // Bind WebGLBuffer (colorBuffer) to special WebGL bind point (gl.ARRAY_BUFFER)
+        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer)
+
+        // Supply colors float 32 bit array to WebGLBuffer (gl.ARRAY_BUFFER)
+        gl.bufferData(gl.ARRAY_BUFFER, colors, gl.DYNAMIC_DRAW)
+
+        // Explicitly enable "color" variable on GPU
+        gl.enableVertexAttribArray(colorAttributeLocationOnGPU)
+
+        // Instruct the GPU how to unpack our WebGLBuffer to our input attribute variable "color" in the vertex shader
+        gl.vertexAttribPointer(colorAttributeLocationOnGPU, 3, gl.FLOAT, false, 0, 0)
+      }
+
+      {
+        // Bind WebGLBuffer (sizeBuffer) to special WebGL bind point (gl.ARRAY_BUFFER)
+        gl.bindBuffer(gl.ARRAY_BUFFER, sizeBuffer)
+
+        // Supply point sizes float 32 bit array to WebGLBuffer (gl.ARRAY_BUFFER)
+        gl.bufferData(gl.ARRAY_BUFFER, pointSizes, gl.DYNAMIC_DRAW)
+
+        // Explicitly enable "pointSize" variable on GPU
+        gl.enableVertexAttribArray(pointSizeAttributeLocationOnGPU)
+
+        // Instruct the GPU how to unpack our WebGLBuffer to our input attribute variable "pointSize" in the vertex shader
+        gl.vertexAttribPointer(pointSizeAttributeLocationOnGPU, 1, gl.FLOAT, false, 0, 0)
+      }
+
+
+      // Explicitly use my WebGLProgram that I am interested in drawing with
+      gl.useProgram(drawingProgram)
+
+      // Issue a draw command using my active WebGLProgram
+      gl.drawArrays(gl.POINTS, 0, positions.length / 2)
+
+    }
+
+    // WebGL helper methods
+    function createShader (type, source) { // WebGLShader
+      const shader = gl.createShader(type)
+      gl.shaderSource(shader, source)
+      gl.compileShader(shader)
+      if (gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        return shader
+      }
+      console.error(`
+        Error when compiling shader on the GPU:
+        ${gl.getShaderInfoLog(shader)}
+      `)
+      gl.deleteShader(shader)
+    }
+
+    function createProgram (vertexShaderObject, fragmentShaderObject) { // WebGLProgram
+      const program = gl.createProgram()
+      gl.attachShader(program, vertexShaderObject)
+      gl.attachShader(program, fragmentShaderObject)
+      gl.linkProgram(program)
+      if (gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        return program
+      }
+      console.error(`
+        Error when linking program on the GPU:
+        ${gl.getProgramInfoLog(program)}
+      `)
+      gl.deleteProgram(program)
+    }
+
+  </script>
+
+
+
+
+
+
+
+
+
+  <!-- Global site tag (gtag.js) - Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=UA-204513506-4"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'UA-204513506-4');
+  </script>
+
+  
+</body>
+</html>
