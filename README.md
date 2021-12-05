@@ -4,7 +4,7 @@
 
 This repository contains all the samples, excercises, and demo code needed for this course.
 
-
+![alt text](https://github.com/gnikoloff/practical-webgl-from-scratch-course/blob/master/i-know-opengl.jpeg?raw=true)
 
 If one understands how vanilla WebGL itself produces pixels on the screen, she will have a much easier time implementing all the cool, award winning effects with confidence and without relying on other people's code. Furthermore, knowing the internals will give any frontend developer an edge and an intro to any good web agency.
 
