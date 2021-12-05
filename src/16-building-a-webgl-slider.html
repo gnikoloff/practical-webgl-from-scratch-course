@@ -116,18 +116,17 @@
     const FRAGMENT_SHADER_SOURCE = `
       precision highp float;
 
-      const int NUMBER_OF_TEXTURES = 7;
-
-      uniform sampler2D textures[NUMBER_OF_TEXTURES];
+      uniform sampler2D textures[7];
       uniform int nextSlideIdx;
       uniform int activeSlideIdx;
       uniform float slideMixFactor;
+      uniform vec2 transitionCenter;
 
       varying vec2 v_uv;
       
       vec4 sampleFromTextureAtIndex (sampler2D textures[7], int textureIndex, vec2 uv) {
         vec4 outputColor = vec4(0.0);
-        for (int i = 0; i < NUMBER_OF_TEXTURES; i++) {
+        for (int i = 0; i < 7; ++i) {
           vec4 textureColorAtIndex = texture2D(textures[i], uv);
           if (i == textureIndex) {
             outputColor = textureColorAtIndex;
@@ -141,11 +140,10 @@
       }
 
       void main () {
-        vec2 center = vec2(0.5);
         float threshold = 3.0;
         float fadeEdge = 0.1;
 
-        float dist = distance(center, v_uv) / threshold;
+        float dist = distance(transitionCenter, v_uv) / threshold;
         float r = slideMixFactor - min(rand(vec2(v_uv.y, 0.0)), rand(vec2(0.0, v_uv.x)));
 
         vec4 activeTextureColor = sampleFromTextureAtIndex(textures, activeSlideIdx, v_uv);
@@ -171,6 +169,7 @@
     let activeSlideIdx = 0
     let nextSlideIdx = 0
     let slideMixFactor = 0
+    let transitionCenter = [0, 0]
     let slideTransitionPlayback
     
     const canvas = document.getElementById('canvas')
@@ -241,6 +240,9 @@
     // Look up "slideMixFactor" uniform variable location on our GPU
     const slideMixFactorUniformLocationOnGPU = gl.getUniformLocation(drawingProgram, 'slideMixFactor')
 
+    // Look up "transitionCenter" uniform variable location on our GPU
+    const transitionCenterUniformLocationOnGPU = gl.getUniformLocation(drawingProgram, 'transitionCenter')
+
     // Create an array to hold our WebGLTextures for our slides
     let textures
 
@@ -265,6 +267,7 @@
       }
 
       if (clickedButtonID === 'prev-button') {
+        transitionCenter = [0, 0.45]
         nextSlideIdx--
         if (nextSlideIdx === -1) {
           nextSlideIdx = SLIDER_IMAGE_URLS.length - 1
@@ -284,6 +287,7 @@
           }
         })
       } else if (clickedButtonID === 'next-button') {
+        transitionCenter = [1, 0.45]
         nextSlideIdx++
         if (nextSlideIdx === SLIDER_IMAGE_URLS.length) {
           nextSlideIdx = 0
@@ -406,6 +410,9 @@
 
         // Pass in correct slider mix factor between prev and active slide
         gl.uniform1f(slideMixFactorUniformLocationOnGPU, slideMixFactor)
+
+        // Pass in correct transition center represented by 2 floats (vec2)
+        gl.uniform2f(transitionCenterUniformLocationOnGPU, ...transitionCenter)
 
         // Issue a draw command using my active WebGLProgram
         gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0)

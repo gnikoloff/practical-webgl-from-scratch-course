@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>19 - Building a particles animation</title>
+
+  <style>
+      
+    * { margin: 0; padding: 0; }
+
+    body {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: sans-serif;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 1.5em;
+      margin-bottom: 1em;
+    }
+
+    #go-back {
+      position: fixed;
+      top: 1em;
+      left: 1em;
+    }
+
+    #canvas {
+      box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.2);
+    }
+
+  </style>
+
+</head>
+<body>
+
+  <a id="go-back" href="/">Go Back</a>
+
+  <div id="container">
+    <h1>19 - Building a particles animation</h1>
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <script>
+
+    const CANVAS_WIDTH = 512
+    const CANVAS_HEIGHT = 512 
+    const PARTICLES_COUNT = 1000
+
+    let oldTime = 0
+    let circleScale = 2
+    let circleScaleTarget = 2
+    let sinXScale = 1
+    let sinXScaleTarget = 2
+
+    const VERTEX_SHADER_SOURCE = `
+      uniform float time;
+      uniform float circleScale;
+      uniform float sinXScale;
+
+      attribute float index;
+
+      const float PI = ${Math.PI};
+      const float PARTICLE_COUNT = ${PARTICLES_COUNT}.0;
+
+      varying float color;
+
+      void main () {
+        float step = PI * circleScale / PARTICLE_COUNT;
+        float radius = index / PARTICLE_COUNT;
+        vec2 centerPoint = vec2(0.0);
+        gl_Position = vec4(
+          centerPoint.x + cos(index * -step * sinXScale + time) * radius,
+          centerPoint.y + sin(index * -step + time) * radius,
+          0.0,
+          1.0
+        );
+        gl_PointSize = 5.0;
+
+        color = 1.0 - radius;
+      }
+    `
+
+    const FRAGMENT_SHADER_SOURCE = `
+      precision highp float;
+
+      varying float color;
+
+      void main () {
+        gl_FragColor = vec4(vec3(color), 1.0);
+      }
+    `
+
+    const canvas = document.getElementById('canvas')
+    canvas.width = CANVAS_WIDTH * devicePixelRatio
+    canvas.height = CANVAS_HEIGHT * devicePixelRatio
+    canvas.style.setProperty('width', `${CANVAS_WIDTH}px`)
+    canvas.style.setProperty('height', `${CANVAS_HEIGHT}px`)
+
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+
+    const vertexShader = createShader(gl.VERTEX_SHADER, VERTEX_SHADER_SOURCE)
+    const fragmentShader = createShader(gl.FRAGMENT_SHADER, FRAGMENT_SHADER_SOURCE)
+
+    const drawingProgram = createProgram(vertexShader, fragmentShader)
+
+    const indices = new Float32Array(PARTICLES_COUNT)
+
+    for (let i = 0; i < PARTICLES_COUNT; i++) {
+      indices[i] = i
+    }
+
+    const indexBuffer = gl.createBuffer()
+
+    const indexLocation = gl.getAttribLocation(drawingProgram, 'index')
+
+    const timeLocation = gl.getUniformLocation(drawingProgram, 'time')
+    const circleScaleLocation = gl.getUniformLocation(drawingProgram, 'circleScale')
+    const sinXScaleLocation = gl.getUniformLocation(drawingProgram, 'sinXScale')
+
+    setInterval(changeShape, 2000)
+
+    requestAnimationFrame(renderFrame)
+
+    function changeShape () {
+      circleScaleTarget = 1 + Math.random() * 8
+      sinXScaleTarget = Math.random()
+    }
+
+    function renderFrame (timeElapsed) {
+      timeElapsed /= 1000
+      const timeElapsedSincePrevFrame = timeElapsed - oldTime
+      oldTime = timeElapsed
+
+      requestAnimationFrame(renderFrame)
+
+      circleScale += (circleScaleTarget - circleScale) * timeElapsedSincePrevFrame
+      sinXScale += (sinXScaleTarget - sinXScale) * timeElapsedSincePrevFrame
+
+      gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight)
+      gl.clearColor(1, 1, 1, 1)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, indexBuffer)
+      gl.bufferData(gl.ARRAY_BUFFER, indices, gl.STATIC_DRAW)
+
+      gl.enableVertexAttribArray(indexLocation)
+      gl.vertexAttribPointer(indexLocation, 1, gl.FLOAT, false, 0, 0)
+
+      gl.useProgram(drawingProgram)
+
+      gl.uniform1f(timeLocation, timeElapsed)
+      gl.uniform1f(circleScaleLocation, circleScale)
+      gl.uniform1f(sinXScaleLocation, sinXScale)
+
+      gl.drawArrays(gl.POINTS, 0, PARTICLES_COUNT)
+      
+    }
+
+    function createShader (type, source) {
+      const shader = gl.createShader(type)
+      gl.shaderSource(shader, source)
+      gl.compileShader(shader)
+      if (gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        return shader
+      }
+      console.error(`
+        Error when compiling ${type === gl.VERTEX_SHADER ? 'vertex' : 'fragment'} shader:
+        ${gl.getShaderInfoLog(shader)}
+      `)
+      gl.deleteShader(shader)
+    }
+
+    function createProgram (vertexShader, fragmentShader) {
+      const program = gl.createProgram()
+      gl.attachShader(program, vertexShader)
+      gl.attachShader(program, fragmentShader)
+      gl.linkProgram(program)
+      if (gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        return program
+      }
+      console.error(`
+        Error when linking program:
+        ${gl.getProgramInfoLog(program)}
+      `)
+      gl.deleteProgram(program)
+      gl.deleteShader(vertexShader)
+      gl.deleteShader(fragmentShader)
+    }
+
+  </script>
+
+
+  <!-- Global site tag (gtag.js) - Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=UA-204513506-4"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'UA-204513506-4');
+  </script>
+
+  
+</body>
+</html>

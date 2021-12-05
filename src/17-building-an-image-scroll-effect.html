@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>17 - Building an image scroll effect</title>
+
+  <style>
+      
+    * { margin: 0; padding: 0; }
+
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 3rem;
+    }
+
+    #go-back {
+      position: fixed;
+      top: 1em;
+      left: 1em;
+    }
+
+    body {
+      font-family: sans-serif;
+      font-size: 18px;
+      line-height: 26px;
+    }
+
+    main {
+      margin: 0 auto;
+      padding: 8rem 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 90%;
+    }
+
+    @media (min-width: 760px) {
+      main {
+        width: 768px;
+      }
+    }
+
+    p {
+      margin: 0 0 1.5rem 0;
+      color: rgba(0, 0, 0, 0.85);
+    }
+
+    canvas {
+      margin-bottom: 1.5rem;
+    }
+
+  </style>
+
+</head>
+<body>
+
+  <a id="go-back" href="/">Go Back</a>
+
+  <div id="container">
+    <main>
+      <h1>17 - Building an image scroll effect</h1>
+      <p>
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+      </p>
+      <p>
+        Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo
+      </p>
+      <canvas id="canvas"></canvas>
+      <p>
+        At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium voluptatum deleniti atque corrupti quos dolores et quas molestias excepturi sint occaecati cupiditate non provident, similique sunt in culpa qui officia deserunt mollitia animi, id est laborum et dolorum fuga. Et harum quidem rerum facilis est et expedita distinctio. Nam libero tempore, cum soluta nobis est eligendi optio cumque nihil impedit quo minus id quod maxime placeat facere possimus, omnis voluptas assumenda est, omnis dolor repellendus. Temporibus autem quibusdam et aut officiis debitis aut rerum necessitatibus saepe eveniet ut et voluptates repudiandae sint et molestiae non recusandae. Itaque earum rerum hic tenetur a sapiente delectus, ut aut reiciendis voluptatibus maiores alias consequatur aut perferendis doloribus asperiores repellat.
+      </p>
+      <p>
+        Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem. Ut enim ad minima veniam, quis nostrum exercitationem ullam corporis suscipit laboriosam, nisi ut aliquid ex ea commodi consequatur? Quis autem vel eum iure reprehenderit qui in ea voluptate velit esse quam nihil molestiae consequatur, vel illum qui dolorem eum fugiat quo voluptas nulla pariatur?
+      </p>
+    </main>
+  </div>
+
+  <script>
+
+    const VERTEX_SHADER_SOURCE = `
+      uniform mat4 scaleMatrix;
+      uniform float scrollOffset;
+
+      attribute vec4 position;
+      attribute vec2 uv;
+
+      varying vec2 v_uv;
+
+      void main () {
+        vec4 offsetPosition = vec4(
+          0.0,
+          sin(distance(position.x, 0.0)) * abs(position.x) * scrollOffset,
+          0.0,
+          0.0
+        );
+        vec4 augmentedPosition = position + offsetPosition;
+        gl_Position = scaleMatrix * augmentedPosition;
+
+        v_uv = uv;
+      }
+    `
+
+    const FRAGMENT_SHADER_SOURCE = `
+      precision highp float;
+
+      uniform sampler2D texture;
+
+      varying vec2 v_uv;
+
+      void main () {
+        gl_FragColor = texture2D(texture, v_uv);
+      }
+    `
+
+    const CANVAS_WIDTH = 512
+    const CANVAS_HEIGHT = 512
+
+    let oldTime = 0
+    let scrollOffset = 0
+
+    // Size the canvas
+    const canvas = document.getElementById('canvas')
+    canvas.width = CANVAS_WIDTH * devicePixelRatio
+    canvas.height = CANVAS_HEIGHT * devicePixelRatio
+    canvas.style.setProperty('width', `${CANVAS_WIDTH}px`)
+    canvas.style.setProperty('height', `${CANVAS_HEIGHT}px`)
+    
+    // Obtain a WebGLRenderingContext
+    // experimental-webgl is to handle IE11
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+
+    const vertexShader = createShader(gl.VERTEX_SHADER, VERTEX_SHADER_SOURCE)
+    const fragmentShader = createShader(gl.FRAGMENT_SHADER, FRAGMENT_SHADER_SOURCE)
+    const drawingProgram = createProgram(vertexShader, fragmentShader)
+
+    const posLocation = gl.getAttribLocation(drawingProgram, 'position')
+    const uvLocation = gl.getAttribLocation(drawingProgram, 'uv')
+
+    const {
+      positions,
+      uvs,
+      indices
+    } = createPlaneGeometry(2, 2, 10, 10)
+
+    const positionBuffer = gl.createBuffer()
+    const uvBuffer = gl.createBuffer()
+    const indexBuffer = gl.createBuffer()
+
+    const scale = 0.9
+    const scaleMatrix = new Float32Array([
+      scale, 0, 0, 0,
+      0, scale, 0, 0,
+      0, 0, 0, 0,
+      0, 0, 0, 1
+    ])
+
+    const scaleMatrixLocation = gl.getUniformLocation(drawingProgram, 'scaleMatrix')
+    const scrollOffsetLocation = gl.getUniformLocation(drawingProgram, 'scrollOffset')
+
+    let webglTexture
+
+    loadImage('/assets/water-texture.png')
+      .then(image => {
+        webglTexture = gl.createTexture()
+        gl.bindTexture(gl.TEXTURE_2D, webglTexture)
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, image)
+        gl.generateMipmap(gl.TEXTURE_2D)
+        gl.bindTexture(gl.TEXTURE_2D, null)
+      })
+      .catch(error => console.error(error))
+
+    window.addEventListener('mousewheel', onScroll)
+
+    function onScroll (event) {
+      scrollOffset += event.deltaY * 0.002
+      scrollOffset = Math.min(Math.max(scrollOffset, -0.1), 0.1)
+    }
+
+    // Rendering loop
+    requestAnimationFrame(renderFrame)
+    function renderFrame (timeElapsed) {
+      timeElapsed /= 1000
+      const deltaTimePassedSinceLastFrame = timeElapsed - oldTime
+      oldTime = timeElapsed
+      requestAnimationFrame(renderFrame)
+
+      scrollOffset += -scrollOffset * (deltaTimePassedSinceLastFrame * 10)
+
+
+      gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight)
+      gl.clearColor(1, 1, 1, 1)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+
+      // positions
+      gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer)
+      gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW)
+      gl.enableVertexAttribArray(posLocation)
+      gl.vertexAttribPointer(posLocation, 2, gl.FLOAT, false, 0, 0)
+
+      // uvs
+      gl.bindBuffer(gl.ARRAY_BUFFER, uvBuffer)
+      gl.bufferData(gl.ARRAY_BUFFER, uvs, gl.STATIC_DRAW)
+      gl.enableVertexAttribArray(uvLocation)
+      gl.vertexAttribPointer(uvLocation, 2, gl.FLOAT, false, 0, 0)
+
+      // indices
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer)
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW)
+
+      gl.useProgram(drawingProgram)
+
+      gl.uniformMatrix4fv(scaleMatrixLocation, false, scaleMatrix)
+      gl.uniform1f(scrollOffsetLocation, scrollOffset)
+
+      gl.activeTexture(gl.TEXTURE0)
+      gl.bindTexture(gl.TEXTURE_2D, webglTexture)
+
+      gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0)
+
+      // gl.bindTexture(gl.TEXTURE_2D, null)
+    }
+
+    // Helpers
+    function loadImage (url) {
+      return new Promise((resolve, reject) => {
+        const image = new Image()
+        image.onload = () => resolve(image)
+        image.onerror = err => reject(err)
+        image.src = url
+      })
+    }
+
+    // WebGL helper methods
+    function createPlaneGeometry (width, height, widthSegments = 3, heightSegments = 3) {
+      const positions = []
+      const uvs = []
+      const indices = []
+      
+      const segmentStepX = 1 / widthSegments
+      const segmentStepY = 1 / heightSegments
+
+      for (let y = 0; y <= heightSegments; y++) {
+        const posy = y * segmentStepY * height - height / 2
+        const uvy = y * segmentStepY
+        for (let x = 0; x <= widthSegments; x++) {
+          const posx = x * segmentStepX * width - width / 2
+          positions.push(posx, posy)
+
+          const uvx = x * segmentStepX
+          uvs.push(uvx, uvy)
+        }
+      }
+
+      for (let y = 0; y < heightSegments; y++) {
+        for (let x = 0; x < widthSegments; x++) {
+          const rowStartNum = y * (widthSegments + 1)
+          const nextRowStartNum = (y + 1) * (widthSegments + 1)
+
+          indices.push(rowStartNum + x)
+          indices.push(rowStartNum + x + 1)
+          indices.push(nextRowStartNum + x)
+
+          indices.push(rowStartNum + x + 1)
+          indices.push(nextRowStartNum + x + 1)
+          indices.push(nextRowStartNum + x)
+        }
+      }
+
+      return {
+        positions: new Float32Array(positions),
+        uvs: new Float32Array(uvs),
+        indices: new Uint16Array(indices),
+      }
+
+    }
+
+
+    function createShader (type, source) { // WebGLShader
+      const shader = gl.createShader(type)
+      gl.shaderSource(shader, source)
+      gl.compileShader(shader)
+      if (gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        return shader
+      }
+      console.error(`
+        Error when compiling shader on the GPU:
+        ${gl.getShaderInfoLog(shader)}
+      `)
+      gl.deleteShader(shader)
+    }
+
+    function createProgram (vertexShaderObject, fragmentShaderObject) { // WebGLProgram
+      const program = gl.createProgram()
+      gl.attachShader(program, vertexShaderObject)
+      gl.attachShader(program, fragmentShaderObject)
+      gl.linkProgram(program)
+      if (gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        return program
+      }
+      console.error(`
+        Error when linking program on the GPU:
+        ${gl.getProgramInfoLog(program)}
+      `)
+      gl.deleteProgram(program)
+    }
+
+  </script>
+
+
+
+
+
+
+  <!-- Global site tag (gtag.js) - Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=UA-204513506-4"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'UA-204513506-4');
+  </script>
+
+  
+</body>
+</html>

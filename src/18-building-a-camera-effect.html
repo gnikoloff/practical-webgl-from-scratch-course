@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>18 - Building a camera effect</title>
+
+  <style>
+      
+    * { margin: 0; padding: 0; }
+
+    body {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: sans-serif;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 1.5em;
+      margin-bottom: 1em;
+    }
+
+    #go-back {
+      position: fixed;
+      top: 1em;
+      left: 1em;
+    }
+
+    #canvas {
+      box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.2);
+    }
+
+    #controls {
+      margin-bottom: 1rem;
+    }
+
+  </style>
+
+</head>
+<body>
+
+  <a id="go-back" href="/">Go Back</a>
+
+  <div id="container">
+    <h1>18 - Building a camera effect</h1>
+    <div id="controls">
+      <div>
+        <label for="filter">Select a filter:</label>
+        <select id="filter" name="filter">
+          <option value="0">Edge Detection</option>
+          <option value="1">Sharpen</option>
+          <option value="2">Box Blur</option>
+          <option value="3">Gaussian Blur</option>
+          <option value="4">Original Video</option>
+        </select>
+      </div>
+
+      <div>
+        <label for="video-mode">Select video mode:</label>
+        <select id="video-mode" name="video-mode">
+          <option value="0">Video</option>
+          <option value="1">Camera</option>
+        </select>
+      </div>
+        
+    </div>
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <script>
+
+
+    const VERTEX_SHADER_SOURCE = `
+      attribute vec4 position;
+      attribute vec2 uv;
+
+      varying vec2 v_uv;
+
+      void main () {
+        gl_Position = position;
+        v_uv = uv;
+      }
+    `
+
+    const FRAGMENT_SHADER_SOURCE = `
+      precision highp float;
+
+      uniform sampler2D myTexture;
+      uniform vec2 canvasSize;
+      uniform vec2 videoSize;
+      uniform int filterMode;
+
+      varying vec2 v_uv;
+
+      vec2 convertUVsToBackgroundSizeCover (vec2 canvasSize, vec2 videoSize, vec2 uv) {
+        float rs = canvasSize.x / canvasSize.y;
+        float ri = videoSize.x / videoSize.y;
+        vec2 new = rs < ri ? vec2(videoSize.x * canvasSize.y / videoSize.y, canvasSize.y) : vec2(canvasSize.x, videoSize.y * canvasSize.x / videoSize.x);
+        vec2 offset = (rs < ri ? vec2((new.x - canvasSize.x) / 2.0, 0.0) : vec2(0.0, (new.y - canvasSize.y) / 2.0)) / new;
+        vec2 scaledUV = v_uv * canvasSize / new + offset;
+        return scaledUV;
+      }
+
+      void main () {
+        vec2 uv = convertUVsToBackgroundSizeCover(canvasSize, videoSize, v_uv);
+        vec4 texColor = texture2D(myTexture, uv);
+        
+        vec2 onePixel = vec2(1.0) / videoSize;
+        vec4 outputColor = vec4(0.0);
+
+        if (filterMode == 0) {
+          mat3 edgeDetectionKernel = mat3(
+            -1.0, -1.0, -1.0,
+            -1.0, 8.0, -1.0,
+            -1.0, -1.0, -1.0
+          );
+
+          for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+              vec2 kernelUV = uv + vec2(i - 1, j - 1) * onePixel;
+              vec4 sampleColor = texture2D(myTexture, kernelUV);
+              sampleColor *= edgeDetectionKernel[i][j];
+              outputColor += sampleColor;
+            }
+          }
+        } else if (filterMode == 1) {
+          mat3 sharpenKernel = mat3(
+            0.0, -1.0, 0.0,
+            -1.0, 5.0, -1.0,
+            0.0, -1.0, 0.0
+          );
+
+          for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+              vec2 kernelUV = uv + vec2(i - 1, j - 1) * onePixel;
+              vec4 sampleColor = texture2D(myTexture, kernelUV);
+              sampleColor *= sharpenKernel[i][j];
+              outputColor += sampleColor;
+            }
+          }
+        } else if (filterMode == 2) {
+          mat3 boxBlurKernel = mat3(
+            1.0, 1.0, 1.0,
+            1.0, 1.0, 1.0,
+            1.0, 1.0, 1.0
+          );
+
+          for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+              vec2 kernelUV = uv + vec2(i - 1, j - 1) * onePixel;
+              vec4 sampleColor = texture2D(myTexture, kernelUV);
+              sampleColor *= boxBlurKernel[i][j] / 9.0;
+              outputColor += sampleColor;
+            }
+          }
+        } else if (filterMode == 3) {
+          mat3 gaussianBlurKernel = mat3(
+            1.0, 2.0, 1.0,
+            2.0, 4.0, 2.0,
+            1.0, 2.0, 1.0
+          );
+
+          for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+              vec2 kernelUV = uv + vec2(i - 1, j - 1) * onePixel;
+              vec4 sampleColor = texture2D(myTexture, kernelUV);
+              sampleColor *= gaussianBlurKernel[i][j] / 16.0;
+              outputColor += sampleColor;
+            }
+          }
+        } else if (filterMode == 4) {
+          mat3 identityKernel = mat3(
+            0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            0.0, 0.0, 0.0
+          );
+
+          for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+              vec2 kernelUV = uv + vec2(i - 1, j - 1) * onePixel;
+              vec4 sampleColor = texture2D(myTexture, kernelUV);
+              sampleColor *= identityKernel[i][j];
+              outputColor += sampleColor;
+            }
+          }
+        }
+
+        outputColor.a = 1.0;
+
+        gl_FragColor = outputColor;
+      }
+    `
+
+    const CANVAS_WIDTH = 512
+    const CANVAS_HEIGHT = 512
+
+    let filterMode = 0
+    let cameraMode = 0
+    
+    const canvas = document.getElementById('canvas')
+    canvas.width = CANVAS_WIDTH * devicePixelRatio
+    canvas.height = CANVAS_HEIGHT * devicePixelRatio
+    canvas.style.setProperty('width', `${CANVAS_WIDTH}px`)
+    canvas.style.setProperty('height', `${CANVAS_HEIGHT}px`)
+
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+
+    const vertexShader = createShader(gl.VERTEX_SHADER, VERTEX_SHADER_SOURCE)
+    const fragmentShader = createShader(gl.FRAGMENT_SHADER, FRAGMENT_SHADER_SOURCE)
+
+    const drawingProgram = createProgram(vertexShader, fragmentShader)
+
+    const QUAD_WIDTH = 2
+    const QUAD_HEIGHT = 2
+    const positions = new Float32Array([
+      -QUAD_WIDTH / 2, -QUAD_HEIGHT / 2, // v0
+       QUAD_WIDTH / 2, -QUAD_HEIGHT / 2, // v1
+       QUAD_WIDTH / 2, QUAD_HEIGHT / 2, // v2
+      -QUAD_WIDTH / 2, QUAD_HEIGHT / 2, // v3
+    ])
+    const uvs = new Float32Array([
+      0, 0, // v0
+      1, 0, // v1
+      1, 1, // v2
+      0, 1, // v3
+    ])
+    const indices = new Uint16Array([
+      1, 2, 0, // first triangle
+      0, 2, 3, // second triangle
+    ])
+    
+    const positionAttributeLocationOnGPU = gl.getAttribLocation(drawingProgram, 'position')
+    const uvAttributeLocationOnGPU = gl.getAttribLocation(drawingProgram, 'uv')
+
+    const vertexBuffer = gl.createBuffer()
+    const uvBuffer = gl.createBuffer()
+    const indexBuffer = gl.createBuffer()
+
+    gl.useProgram(drawingProgram)
+    const textureUniformLocationOnGPU = gl.getUniformLocation(drawingProgram, 'myTexture')
+    const canvasSizeLocationOnGPU = gl.getUniformLocation(drawingProgram, 'canvasSize')
+    const videoSizeLocationOnGPU = gl.getUniformLocation(drawingProgram, 'videoSize')
+    const filterModeLocationOnGPU = gl.getUniformLocation(drawingProgram, 'filterMode')
+    
+    const texture = gl.createTexture()
+
+    const video = document.createElement('video')
+    video.src = '/assets/big-buck-bunny-sample-video.mp4'
+
+    video.loop = true
+    video.muted = true
+    video.autoplay = true
+    video.playsInline = true
+
+    video.setAttribute('loop', true)
+    video.setAttribute('muted', true)
+    video.setAttribute('autoplay', true)
+    video.setAttribute('playsinline', true)
+
+    video.play()
+
+    const cameraVideo = document.createElement('video')
+
+    navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+      .then(stream => {
+        cameraVideo.srcObject = stream
+        cameraVideo.play()
+      })
+      .catch(console.error)
+
+    const effectSelectEl = document.getElementById('filter')
+    const videoModeSelectEl = document.getElementById('video-mode')
+
+    effectSelectEl.addEventListener('change', onEffectSelection)
+    videoModeSelectEl.addEventListener('change', onVideoModeSelect)
+
+    function onEffectSelection (event) {
+      filterMode = parseInt(event.target.value, 10)
+    }
+
+    function onVideoModeSelect (event) {
+      cameraMode = parseInt(event.target.value, 10)
+    }
+
+    // Rendering loop
+    requestAnimationFrame(renderFrame)
+    function renderFrame () {
+      requestAnimationFrame(renderFrame)
+
+      gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight)
+      gl.clearColor(0.1, 0.1, 0.1, 1)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+
+      // position
+      gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer)
+      gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW)
+      gl.enableVertexAttribArray(positionAttributeLocationOnGPU)
+      gl.vertexAttribPointer(positionAttributeLocationOnGPU, 2, gl.FLOAT, false, 0, 0)
+
+      // uv
+      gl.bindBuffer(gl.ARRAY_BUFFER, uvBuffer)
+      gl.bufferData(gl.ARRAY_BUFFER, uvs, gl.STATIC_DRAW)
+      gl.enableVertexAttribArray(uvAttributeLocationOnGPU)
+      gl.vertexAttribPointer(uvAttributeLocationOnGPU, 2, gl.FLOAT, false, 0, 0)
+
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer)
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW)
+
+      gl.useProgram(drawingProgram)
+      
+      gl.uniform1i(textureUniformLocationOnGPU, 0)
+      gl.uniform2f(canvasSizeLocationOnGPU, CANVAS_WIDTH, CANVAS_HEIGHT)
+      gl.uniform2f(
+        videoSizeLocationOnGPU,
+        cameraMode === 0 ? video.videoWidth : cameraVideo.videoWidth,
+        cameraMode === 0 ? video.videoHeight : cameraVideo.videoHeight
+      )
+      gl.uniform1i(filterModeLocationOnGPU, filterMode)
+      
+      if (video.readyState === 4 && !video.paused) {
+        gl.activeTexture(gl.TEXTURE0)
+        gl.bindTexture(gl.TEXTURE_2D, texture)
+
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, cameraMode === 0 ? video : cameraVideo)
+        gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0)
+      }
+
+
+    }
+
+    // WebGL helper methods
+    function createPlaneGeometry (width, height, widthSegments = 3, heightSegments = 3) {
+      const positions = []
+      const uvs = []
+      const indices = []
+      
+      const segmentStepX = 1 / widthSegments
+      const segmentStepY = 1 / heightSegments
+
+      for (let y = 0; y <= heightSegments; y++) {
+        const posy = y * segmentStepY * height - height / 2
+        const uvy = y * segmentStepY
+        for (let x = 0; x <= widthSegments; x++) {
+          const posx = x * segmentStepX * width - width / 2
+          positions.push(posx, posy)
+
+          const uvx = x * segmentStepX
+          uvs.push(uvx, uvy)
+        }
+      }
+
+      for (let y = 0; y < heightSegments; y++) {
+        for (let x = 0; x < widthSegments; x++) {
+          const rowStartNum = y * (widthSegments + 1)
+          const nextRowStartNum = (y + 1) * (widthSegments + 1)
+
+          indices.push(rowStartNum + x)
+          indices.push(rowStartNum + x + 1)
+          indices.push(nextRowStartNum + x)
+
+          indices.push(rowStartNum + x + 1)
+          indices.push(nextRowStartNum + x + 1)
+          indices.push(nextRowStartNum + x)
+        }
+      }
+
+      return {
+        positions: new Float32Array(positions),
+        uvs: new Float32Array(uvs),
+        indices: new Uint16Array(indices),
+      }
+
+    }
+
+    function createShader (type, source) { // WebGLShader
+      const shader = gl.createShader(type)
+      gl.shaderSource(shader, source)
+      gl.compileShader(shader)
+      if (gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        return shader
+      }
+      console.error(`
+        Error when compiling shader on the GPU:
+        ${gl.getShaderInfoLog(shader)}
+      `)
+      gl.deleteShader(shader)
+    }
+
+    function createProgram (vertexShaderObject, fragmentShaderObject) { // WebGLProgram
+      const program = gl.createProgram()
+      gl.attachShader(program, vertexShaderObject)
+      gl.attachShader(program, fragmentShaderObject)
+      gl.linkProgram(program)
+      if (gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        return program
+      }
+      console.error(`
+        Error when linking program on the GPU:
+        ${gl.getProgramInfoLog(program)}
+      `)
+      gl.deleteProgram(program)
+    }
+
+  </script>
+
+
+
+
+
+
+
+
+
+  <!-- Global site tag (gtag.js) - Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=UA-204513506-4"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'UA-204513506-4');
+  </script>
+
+  
+</body>
+</html>
