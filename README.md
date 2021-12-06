@@ -18,6 +18,7 @@ Alternatively, click the Code button in top right of this page and click on "Dow
 To run it, simply:
 1. Navigate to the folder that contains this project
 2. Open a terminal
-3. Install the dependencies with `npm install`
-4. Run it with `npm run start`.
+3. Install [Node.js](https://nodejs.org/en/)
+4. Install the dependencies with `npm install`
+5. Run it with `npm run start`.
 
