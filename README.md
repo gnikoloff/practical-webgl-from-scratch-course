@@ -1,6 +1,6 @@
 # Practical WebGL from scratch for web developers
 
-[Full AWWWARDS Video Course](https://www.awwwards.com/academy/course/practical-webgl-from-scratch-for-frontend-developers)
+[Full AWWWARDS Video Course](https://www.awwwards.com/academy/course/practical-webgl-from-scratch-for-frontend-developers)   
 [Live exercise examples](https://practical-webgl-from-scratch-awwwards-course.georgi-nikolov.com/)
 
 This repository contains all the samples, excercises, and demo code needed for this course.
