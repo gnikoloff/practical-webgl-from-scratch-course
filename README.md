@@ -11,7 +11,7 @@ If one understands how vanilla WebGL itself produces pixels on the screen, she w
 
 ## Installation
 
-Open your favourite terminal, navigate to the folder where you want to install the project and type `https://github.com/gnikoloff/practical-webgl-from-scratch-course.git`.
+Open your favourite terminal, navigate to the folder where you want to install the project and type `git clone https://github.com/gnikoloff/practical-webgl-from-scratch-course.git`.
 Alternatively, click the Code button in top right of this page and click on "Download ZIP". Extract the ZIP file to where the code should be on your computer.
 
 ## Running the project
